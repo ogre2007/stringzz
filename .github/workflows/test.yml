@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     strategy:
       matrix:
         BUILD_TARGET: [dev] # refers to a cargo profile
