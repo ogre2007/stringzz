@@ -42,8 +42,6 @@ tempfile = "3.23.0"
 name = "benchmark"
 harness = false
 
-[[bin]]
-name = "stringzz"
 
 
 [build-dependencies]
