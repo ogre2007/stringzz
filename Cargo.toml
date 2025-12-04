@@ -52,7 +52,3 @@ pyo3 = { version = "0.25", features = ["extension-module"] }
 
 [profile.bench]
 debug = true
-
-[profile.release]
-lto = true
-strup = true
