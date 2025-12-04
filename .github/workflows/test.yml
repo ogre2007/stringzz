@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest]
+        os: [windows-latest]
 
     name: Test `cargo check/test/build` on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -35,5 +35,4 @@ jobs:
       - run: rustup toolchain install stable --profile minimal --no-self-update
 
       - run: |
-          cargo check
           cargo test --profile dev
