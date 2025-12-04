@@ -33,6 +33,6 @@ jobs:
           persist-credentials: false
 
       - run: rustup toolchain install stable --profile minimal --no-self-update
-
+      - uses: Swatinem/rust-cache@v2
       - run: |
           cargo test --profile dev
