@@ -1,15 +1,14 @@
 [package]
 name = "stringzz"
 description = "A library and tool for strings and opcodes extraction from various file formats"
-
-homepage.workspace = true
-readme = "README.md"
-repository.workspace = true
-version.workspace = true
-keywords = ["strings", "malware", "yara", "maturin", "yara-generator"]
-license.workspace = true
-authors.workspace = true
-edition.workspace = true
+ 
+readme = "README.md" 
+version = "0.3.5"
+keywords = ["strings", "malware", "yara", "maturin", "yara-generator"]  
+repository = "https://github.com/ogre2007/stringzz"
+authors = ["ogre2007 <oogre@vk.com>"]
+homepage = "https://github.com/ogre2007/stringzz"
+license = "GPL-3.0-only"
 
 [lib]
 name = "stringzz"
@@ -25,10 +24,9 @@ pyo3 = { version = "0.25", features = ["extension-module"] }
 regex = "1.0"
 md5 = "0.8.0"
 log = "0.4.28"
- 
-env_logger.workspace = true  
-lazy_static.workspace = true 
-base64.workspace = true 
+env_logger = "0.11.8"
+lazy_static = "1.4"
+base64 = "0.22.1"
 
 walkdir = "2.5.0"
 
@@ -45,3 +43,15 @@ harness = false
 
 [[bin]]
 name = "stringzz"
+
+
+[build-dependencies]
+pyo3-build-config = "0.25"
+pyo3 = { version = "0.25", features = ["extension-module"] }
+
+[profile.bench]
+debug = true
+
+[profile.release]
+lto = true
+strup = true

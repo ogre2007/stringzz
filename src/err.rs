@@ -9,10 +9,10 @@ pub enum StringzzError {
     InvalidFormat(String),
 
     #[error("Parse error: {0}")]
-    ParseError(#[from] Box<dyn std::error::Error>),
+    ParseError(Box<dyn std::error::Error>),
 
     #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
+    IoError(std::io::Error),
 
     #[error("PE parsing failed: {0}")]
     PeParseError(String),
