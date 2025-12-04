@@ -39,7 +39,6 @@ pub use err::*;
 pub mod config;
 
 pub use config::*;
-
 use pyo3::{
     pymodule,
     types::{PyModule, PyModuleMethods},
