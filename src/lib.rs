@@ -259,7 +259,7 @@ pub fn is_hex_encoded(s: String, check_length: bool) -> PyResult<bool> {
 #[pyfunction]
 #[pyo3(signature = (
         config = None,
-        excludegood = true,
+        excludegood = false,
         min_score = 5,
         superrule_overlap = 5,
         good_strings_db = None,

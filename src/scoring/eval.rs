@@ -173,6 +173,9 @@ impl ScoringEngine {
                     "goodware string - occured {} times",
                     self.good_strings_db[&string]
                 ));
+                if self.excludegood {
+                    continue;
+                }
             }
             if score {
                 stringe.add_note(format!(" / score: {} /", stringe.score));

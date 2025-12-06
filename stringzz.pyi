@@ -12,6 +12,14 @@ class TokenType(Enum):
     def __eq__(self, other: Any) -> bool: ...
 
 @dataclass
+class ProcessingResults:
+    """Files processing result"""
+    strings: Dict[str, TokenInfo]
+    utf16strings: Dict[str, TokenInfo]
+    opcodes: Dict[str, TokenInfo]
+    file_infos: Dict[str, FileInfo]
+
+@dataclass
 class FileInfo:
     """File information container for PE file analysis."""
     imphash: str

@@ -96,9 +96,13 @@ pub fn process_buffer_u8(
 #[pyclass]
 #[derive(Default, Clone)]
 pub struct ProcessingResults {
+    #[pyo3(get, set)]
     pub file_infos: HashMap<String, FileInfo>,
+    #[pyo3(get, set)]
     pub strings: HashMap<String, TokenInfo>,
+    #[pyo3(get, set)]
     pub utf16strings: HashMap<String, TokenInfo>,
+    #[pyo3(get, set)]
     pub opcodes: HashMap<String, TokenInfo>,
 }
 
@@ -206,15 +210,14 @@ impl FileProcessor {
         // Clone config for each thread (it's small, so this is fine)
         let config = self.config.clone();
 
-        // Process files in parallel and collect results
+        // Process files in parallel and collect results 
         let results: Vec<Result<ProcessingResults>> = files
             .par_iter()
             .map(|file_path| process_file_with_checks_parallel(file_path, &config))
             .collect();
 
         // Merge all results
-        let mut final_results = ProcessingResults::default();
-
+        let mut final_results = ProcessingResults::default(); 
         for result in results {
             match result {
                 Ok(partial_results) => {
@@ -232,8 +235,7 @@ impl FileProcessor {
         self.file_infos = final_results.file_infos;
         self.strings = final_results.strings;
         self.utf16strings = final_results.utf16strings;
-        self.opcodes = final_results.opcodes;
-
+        self.opcodes = final_results.opcodes; 
         // Deduplicate strings
         self.deduplicate_strings();
 
