@@ -78,7 +78,16 @@ impl TokenInfo {
     pub fn __str__(&self) -> String {
         format!(
             "{:?}\t\t{{score={}, count={}, typ={:?}, files={:?}, fullword={}, b64={}, hexed={}, reversed={}, pestud={}}}",
-            self.reprz, self.score, self.count, self.typ, self.files, self.fullword, self.b64, self.hexed, self.reversed, self.from_pestudio
+            self.reprz,
+            self.score,
+            self.count,
+            self.typ,
+            self.files,
+            self.fullword,
+            self.b64,
+            self.hexed,
+            self.reversed,
+            self.from_pestudio
         )
     }
     pub fn generate_string_repr(&self, i: i32, is_super_string: bool) -> String {

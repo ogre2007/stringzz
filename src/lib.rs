@@ -40,9 +40,9 @@ pub mod config;
 
 pub use config::*;
 use pyo3::{
-    pymodule,
+    Bound, PyResult, Python, pymodule,
     types::{PyModule, PyModuleMethods},
-    wrap_pyfunction, Bound, PyResult, Python,
+    wrap_pyfunction,
 };
 
 use std::{
@@ -253,9 +253,6 @@ pub fn is_hex_encoded(s: String, check_length: bool) -> PyResult<bool> {
     }
 }
 
-
-
-
 #[pyfunction]
 #[pyo3(signature = (
         config = None,
@@ -386,19 +383,18 @@ pub fn process_malware(
     env_logger::init_from_env("RUST_LOG");
 
     info!("Processing malware files...");
-    let (string_stats, opcodes, utf16strings, file_infos) =
-        fp.parse_sample_dir(malware_path).unwrap();
+    let results = fp.parse_sample_dir(malware_path).unwrap();
 
     let (string_combis, string_superrules, file_strings) = scoring_engine
-        .sample_string_evaluation(string_stats)
+        .sample_string_evaluation(results.strings)
         .unwrap();
     let (utf16_combis, utf16_superrules, file_utf16strings) = scoring_engine
-        .sample_string_evaluation(utf16strings)
+        .sample_string_evaluation(results.utf16strings)
         .unwrap();
     let mut file_opcodes = Default::default();
     let opcode_combis = Default::default();
     let opcode_superrules = Default::default();
-    extract_stats_by_file(&opcodes, &mut file_opcodes, None, None);
+    extract_stats_by_file(&results.opcodes, &mut file_opcodes, None, None);
     /*let (opcode_combis, opcode_superrules, file_opcodes) = scoring_engine
     .sample_string_evaluation(scoring_engine.opcodes.clone())
     .unwrap();*/
@@ -412,7 +408,7 @@ pub fn process_malware(
         file_strings,
         file_opcodes,
         file_utf16strings,
-        file_infos,
+        results.file_infos,
     ))
 }
 
@@ -442,4 +438,3 @@ fn stringzz(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     Ok(())
 }
- 

@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{is_ascii_string, TokenInfo, TokenType};
+use crate::{TokenInfo, TokenType, is_ascii_string};
 use anyhow::Result;
-use goblin::{elf, pe, Object};
+use goblin::{Object, elf, pe};
 use log::debug;
 use regex::bytes::Regex;
 

@@ -1,6 +1,6 @@
 use crate::{
-    regex_base::{RegexRules, REGEX_INSENSITIVE, REGEX_SENSITIVE},
     TokenInfo,
+    regex_base::{REGEX_INSENSITIVE, REGEX_SENSITIVE, RegexRules},
 };
 
 fn filter_rg(tok: &mut TokenInfo, regex_base: &RegexRules, _ignore_case: bool) -> (i64, String) {

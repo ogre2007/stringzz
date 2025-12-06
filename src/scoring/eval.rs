@@ -1,6 +1,6 @@
 use crate::{
-    is_ascii_string, is_base_64, is_hex_encoded, remove_non_ascii_drop, score_with_regex,
-    TokenInfo, TokenType,
+    TokenInfo, TokenType, is_ascii_string, is_base_64, is_hex_encoded, remove_non_ascii_drop,
+    score_with_regex,
 };
 use base64;
 use log::{info, warn};
@@ -332,9 +332,9 @@ impl ScoringEngine {
                     ];
 
                     for test_str in test_strings {
-                        if is_base_64(test_str.clone()).unwrap() {
-                            if let Ok(decoded_bytes) = base64::decode(test_str.clone().as_bytes()) {
-                                if is_ascii_string(&decoded_bytes, true) {
+                        if is_base_64(test_str.clone()).unwrap()
+                            && let Ok(decoded_bytes) = base64::decode(test_str.clone().as_bytes())
+                                && is_ascii_string(&decoded_bytes, true) {
                                     token.score += 10;
                                     self.base64strings.insert(
                                         token.reprz.clone(),
@@ -342,8 +342,6 @@ impl ScoringEngine {
                                     );
                                     token.b64 = true;
                                 }
-                            }
-                        }
                     }
 
                     // Hex encoded string detection
@@ -356,9 +354,9 @@ impl ScoringEngine {
                     let hex_test_strings = vec![token.reprz.clone(), cleaned_str];
 
                     for test_str in hex_test_strings {
-                        if is_hex_encoded(test_str.clone(), true).unwrap() {
-                            if let Ok(decoded_bytes) = hex::decode(&test_str) {
-                                if is_ascii_string(&decoded_bytes, true) {
+                        if is_hex_encoded(test_str.clone(), true).unwrap()
+                            && let Ok(decoded_bytes) = hex::decode(&test_str)
+                                && is_ascii_string(&decoded_bytes, true) {
                                     // Not too many 00s
                                     if test_str.contains("00") {
                                         let zero_ratio = test_str.len() as f64
@@ -375,8 +373,6 @@ impl ScoringEngine {
                                     token.hexed = true;
                                     token.fullword = false;
                                 }
-                            }
-                        }
                     }
                 }
 

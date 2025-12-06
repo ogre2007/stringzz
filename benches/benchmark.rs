@@ -1,8 +1,8 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use std::time::Duration;
 use stringzz::{
-    extract_and_count_ascii_strings, extract_and_count_utf16_strings, extract_opcodes,
-    FileProcessor,
+    FileProcessor, extract_and_count_ascii_strings, extract_and_count_utf16_strings,
+    extract_opcodes,
 };
 
 // Helper to load test data
