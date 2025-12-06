@@ -3,12 +3,12 @@ use crate::{
     score_with_regex,
 };
 use base64;
-use log::{info, warn};
+use log::{debug, info};
 use pyo3::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 #[pyclass]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ScoringEngine {
     #[pyo3(get, set)]
     pub good_strings_db: HashMap<String, usize>,
@@ -303,7 +303,7 @@ impl ScoringEngine {
             // PEStudio String Blacklist Evaluation
             let (pescore, type_str) = get_pestudio_score(&token.reprz, &self.pestudio_strings);
             if !type_str.is_empty() {
-                warn!("PESTUDIO_STR: {}-{}-{}", &token.reprz, pescore, type_str);
+                debug!("PESTUDIO_STR: {}-{}-{}", &token.reprz, pescore, type_str);
                 self.pestudio_marker.insert(token.reprz.clone(), type_str);
                 token.from_pestudio = true;
                 if goodstring {
@@ -334,14 +334,15 @@ impl ScoringEngine {
                     for test_str in test_strings {
                         if is_base_64(test_str.clone()).unwrap()
                             && let Ok(decoded_bytes) = base64::decode(test_str.clone().as_bytes())
-                                && is_ascii_string(&decoded_bytes, true) {
-                                    token.score += 10;
-                                    self.base64strings.insert(
-                                        token.reprz.clone(),
-                                        String::from_utf8_lossy(&decoded_bytes).to_string(),
-                                    );
-                                    token.b64 = true;
-                                }
+                            && is_ascii_string(&decoded_bytes, true)
+                        {
+                            token.score += 10;
+                            self.base64strings.insert(
+                                token.reprz.clone(),
+                                String::from_utf8_lossy(&decoded_bytes).to_string(),
+                            );
+                            token.b64 = true;
+                        }
                     }
 
                     // Hex encoded string detection
@@ -356,23 +357,24 @@ impl ScoringEngine {
                     for test_str in hex_test_strings {
                         if is_hex_encoded(test_str.clone(), true).unwrap()
                             && let Ok(decoded_bytes) = hex::decode(&test_str)
-                                && is_ascii_string(&decoded_bytes, true) {
-                                    // Not too many 00s
-                                    if test_str.contains("00") {
-                                        let zero_ratio = test_str.len() as f64
-                                            / test_str.matches('0').count() as f64;
-                                        if zero_ratio <= 1.2 {
-                                            continue;
-                                        }
-                                    }
-                                    token.score += 8;
-                                    self.hex_enc_strings.insert(
-                                        token.reprz.clone(),
-                                        String::from_utf8_lossy(&decoded_bytes).to_string(),
-                                    );
-                                    token.hexed = true;
-                                    token.fullword = false;
+                            && is_ascii_string(&decoded_bytes, true)
+                        {
+                            // Not too many 00s
+                            if test_str.contains("00") {
+                                let zero_ratio =
+                                    test_str.len() as f64 / test_str.matches('0').count() as f64;
+                                if zero_ratio <= 1.2 {
+                                    continue;
                                 }
+                            }
+                            token.score += 8;
+                            self.hex_enc_strings.insert(
+                                token.reprz.clone(),
+                                String::from_utf8_lossy(&decoded_bytes).to_string(),
+                            );
+                            token.hexed = true;
+                            token.fullword = false;
+                        }
                     }
                 }
 

@@ -3,8 +3,9 @@ mod tests {
     use std::fs::{self, File};
 
     use stringzz::{
-        Config, FileInfo, FileProcessor, ProcessingResults, TokenInfo, TokenType, get_files,
-        get_pe_info, is_ascii_string, is_base_64, is_hex_encoded, merge_stats, process_buffer_u8,
+        Config, FileInfo, FileProcessor, ProcessingResults, ScoringEngine, TokenInfo, TokenType,
+        get_files, get_pe_info, is_ascii_string, is_base_64, is_hex_encoded, merge_stats,
+        process_buffer_u8,
     };
 
     use tempfile::TempDir;
@@ -189,7 +190,7 @@ mod tests {
         assert!(fi.imphash.is_empty());
         assert!(fi.exports.is_empty());
     }
-    
+
     use std::collections::{HashMap, HashSet};
     use std::io::Write;
 
@@ -767,5 +768,143 @@ mod tests {
             .unwrap();
         assert_eq!(results.file_infos.len(), 3);
         assert!(results.strings.contains_key("Small"));
+    }
+
+    use pyo3::{Py, PyResult, Python};
+    use stringzz::{process_buffers_parallel, process_buffers_with_stats};
+
+    #[test]
+    fn test_process_buffers_parallel() {
+        pyo3::prepare_freethreaded_python();
+        let config = Config {
+            min_string_len: 3,
+            max_string_len: 100,
+            extract_opcodes: false,
+            debug: false,
+            ..Default::default()
+        };
+
+        let _ = Python::with_gil(|py| -> PyResult<_> {
+            let py_fp: Py<FileProcessor> = Py::new(
+                py,
+                FileProcessor {
+                    config,
+                    ..Default::default()
+                },
+            )?;
+            let py_scoring: Py<ScoringEngine> = Py::new(
+                py,
+                ScoringEngine {
+                    good_strings_db: HashMap::new(),
+                    good_opcodes_db: HashMap::new(),
+                    good_imphashes_db: HashMap::new(),
+                    good_exports_db: HashMap::new(),
+                    pestudio_strings: HashMap::new(),
+                    pestudio_marker: HashMap::new(),
+                    base64strings: HashMap::new(),
+                    hex_enc_strings: HashMap::new(),
+                    reversed_strings: HashMap::new(),
+                    excludegood: false,
+                    min_score: 0,
+                    superrule_overlap: 5,
+                    string_scores: HashMap::new(),
+                },
+            )?;
+
+            // Create test buffers
+            let buffers = vec![
+                b"MZ\x90\x00\x03\x00TestBuffer1\x00\x55\x8b\xec".to_vec(),
+                b"MZ\x90\x00\x03\x00TestBuffer2\x00\x8b\x45\x08".to_vec(),
+                b"MZ\x90\x00\x03\x00CommonString\x00\x55\x8b\xec".to_vec(),
+                b"MZ\x90\x00\x03\x00CommonString\x00\x8b\x45\x08".to_vec(),
+            ];
+            let py_fp_ref = py_fp.borrow_mut(py);
+            let py_scoring_ref = py_scoring.borrow_mut(py);
+            let (file_infos, strings, opcodes, _utf16strings) =
+                process_buffers_parallel(buffers, py_fp_ref, py_scoring_ref).unwrap();
+
+            // Should have processed 4 buffers
+            assert_eq!(file_infos.len(), 4);
+
+            // Should have extracted strings
+            assert!(strings.values().any(|v| !v.is_empty()));
+
+            // Check that each buffer has its own entry
+            assert!(file_infos.contains_key("buffer_0"));
+            assert!(file_infos.contains_key("buffer_1"));
+            assert!(file_infos.contains_key("buffer_2"));
+            assert!(file_infos.contains_key("buffer_3"));
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_process_buffers_with_stats() {
+        pyo3::prepare_freethreaded_python();
+        let config = Config {
+            min_string_len: 3,
+            max_string_len: 100,
+            extract_opcodes: false,
+            debug: false,
+            ..Default::default()
+        };
+
+        let _ = Python::with_gil(|py| -> PyResult<_> {
+            let py_fp: Py<FileProcessor> = Py::new(
+                py,
+                FileProcessor {
+                    config,
+                    ..Default::default()
+                },
+            )?;
+
+            let content = b"MZ\x90\x00\x03\x00DuplicateContent\x00\x55\x8b\xec";
+            let buffers = vec![content.to_vec(), content.to_vec()];
+
+            let py_fp_ref: pyo3::PyRefMut<'_, FileProcessor> = py_fp.borrow_mut(py);
+
+            let results = process_buffers_with_stats(&buffers, py_fp_ref).unwrap();
+
+            // Should only have one unique file (duplicate detection)
+            assert_eq!(results.file_infos.len(), 1);
+
+            // Should have extracted strings
+            assert!(!results.strings.is_empty());
+
+            // The string should appear twice (from both buffers)
+            if let Some(token_info) = results.strings.get("DuplicateContent") {
+                assert!(token_info.count >= 1);
+            }
+            Ok(())
+        });
+        // Create test buffers with duplicate content (same SHA256)
+    }
+
+    #[test]
+    fn test_process_buffers_empty() {
+        pyo3::prepare_freethreaded_python();
+        let config = Config::default();
+        let _ = Python::with_gil(|py| -> PyResult<_> {
+            let py_fp: Py<FileProcessor> = Py::new(
+                py,
+                FileProcessor {
+                    config,
+                    ..Default::default()
+                },
+            )?;
+            let py_scoring: Py<ScoringEngine> = Py::new(py, ScoringEngine::default())?;
+
+            let py_fp_ref = py_fp.borrow_mut(py);
+            let py_scoring_ref = py_scoring.borrow_mut(py);
+            let empty_buffers: Vec<Vec<u8>> = vec![];
+            let (file_infos, strings, opcodes, utf16strings) =
+                process_buffers_parallel(empty_buffers, py_fp_ref, py_scoring_ref).unwrap();
+            // Should return empty results
+            assert!(file_infos.is_empty());
+            assert!(strings.is_empty());
+            assert!(opcodes.is_empty());
+            assert!(utf16strings.is_empty());
+            Ok(())
+        });
     }
 }

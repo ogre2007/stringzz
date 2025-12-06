@@ -51,17 +51,19 @@ pub fn get_files(folder: String, recursive: bool) -> PyResult<Vec<String>> {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_file()
-                    && let Some(path_str) = path.to_str() {
-                        files.push(path_str.to_string());
-                    }
+                    && let Some(path_str) = path.to_str()
+                {
+                    files.push(path_str.to_string());
+                }
             }
         }
     } else {
         for entry in WalkDir::new(&folder).into_iter().filter_map(|e| e.ok()) {
             if entry.file_type().is_file()
-                && let Some(path_str) = entry.path().to_str() {
-                    files.push(path_str.to_string());
-                }
+                && let Some(path_str) = entry.path().to_str()
+            {
+                files.push(path_str.to_string());
+            }
         }
     }
 
@@ -92,7 +94,7 @@ pub fn process_buffer_u8(
 
 // Helper struct to hold results from parallel processing
 #[pyclass]
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ProcessingResults {
     pub file_infos: HashMap<String, FileInfo>,
     pub strings: HashMap<String, TokenInfo>,
@@ -100,10 +102,58 @@ pub struct ProcessingResults {
     pub opcodes: HashMap<String, TokenInfo>,
 }
 
+#[pymethods]
 impl ProcessingResults {
-    pub fn merge(&mut self, other: Self) {
+    // In files.rs, add to ProcessingResults impl block
+
+    #[new]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn get_file_count(&self) -> usize {
+        self.file_infos.len()
+    }
+
+    pub fn get_string_count(&self) -> usize {
+        self.strings.len()
+    }
+
+    pub fn get_utf16string_count(&self) -> usize {
+        self.utf16strings.len()
+    }
+
+    pub fn get_opcode_count(&self) -> usize {
+        self.opcodes.len()
+    }
+
+    pub fn deduplicate(&mut self) {
+        // Simple deduplication implementation
+        let mut strings_clone = self.strings.clone();
+
+        // Remove ASCII strings that also exist as UTF16
+        let utf16_keys: Vec<String> = self
+            .utf16strings
+            .keys()
+            .filter(|k| strings_clone.contains_key(*k))
+            .cloned()
+            .collect();
+
+        for key in utf16_keys {
+            if let Some(wide_info) = self.utf16strings.remove(&key)
+                && let Some(ascii_info) = strings_clone.get_mut(&key) {
+                    ascii_info.count += wide_info.count;
+                    ascii_info.also_wide = true;
+                    ascii_info.files.extend(wide_info.files);
+                }
+        }
+
+        self.strings = strings_clone;
+    }
+
+    pub fn merge(&mut self, other: ProcessingResults) {
         // Merge file infos (checking for duplicates)
-        for (path, fi) in other.file_infos {
+        for (path, fi) in other.file_infos.clone() {
             // Check for SHA256 duplicates before inserting
             if !self
                 .file_infos
@@ -132,7 +182,6 @@ impl ProcessingResults {
         }
     }
 }
-
 #[pymethods]
 impl FileProcessor {
     #[new]
@@ -222,14 +271,14 @@ impl FileProcessor {
 
         if let Some(extensions) = &self.config.extensions
             && let Some(ext) = os_path.extension().and_then(OsStr::to_str)
-                && !extensions
-                    .iter()
-                    .any(|x| x.eq(&ext.to_owned().to_lowercase()))
-                {
-                    debug!("[-] EXTENSION {} - Skipping file {}", ext, file_path);
+            && !extensions
+                .iter()
+                .any(|x| x.eq(&ext.to_owned().to_lowercase()))
+        {
+            debug!("[-] EXTENSION {} - Skipping file {}", ext, file_path);
 
-                    return false;
-                }
+            return false;
+        }
         let meta = fs::metadata(os_path).unwrap();
         if meta.len() < 15 {
             debug!("[-] File is empty - Skipping file {}", file_path);
@@ -277,15 +326,12 @@ impl FileProcessor {
             .collect();
         for key in utf16_keys {
             if let Some(wide_info) = self.utf16strings.remove(&key)
-                && let Some(ascii_info) = self.strings.get_mut(&key) {
-                    ascii_info.count += wide_info.count;
-                    ascii_info.also_wide = true;
-                    ascii_info.files.extend(wide_info.files);
-                }
-        }
-
-        if self.config.debug {
-            println!("Deduplicating strings...");
+                && let Some(ascii_info) = self.strings.get_mut(&key)
+            {
+                ascii_info.count += wide_info.count;
+                ascii_info.also_wide = true;
+                ascii_info.files.extend(wide_info.files);
+            }
         }
 
         // For the deduplication part, let's keep it simple and sequential
@@ -328,11 +374,12 @@ impl FileProcessor {
                             // current contains check (check is shorter or equal length)
                             // Merge current into check
                             if let Some(current_info) = self.strings.remove(current)
-                                && let Some(check_info) = self.strings.get_mut(check) {
-                                    check_info.merge_existed(&current_info);
-                                    to_remove.insert(current.clone());
-                                    break;
-                                }
+                                && let Some(check_info) = self.strings.get_mut(check)
+                            {
+                                check_info.merge_existed(&current_info);
+                                to_remove.insert(current.clone());
+                                break;
+                            }
                         }
                     }
                 }
@@ -369,12 +416,13 @@ fn process_file_with_checks_parallel(
     // Check extension
     if let Some(extensions) = &config.extensions
         && let Some(ext) = os_path.extension().and_then(OsStr::to_str)
-            && !extensions.contains(&ext.to_lowercase()) {
-                if config.debug {
-                    debug!("[-] EXTENSION {} - Skipping file {}", ext, file_path);
-                }
-                return Ok(ProcessingResults::default());
-            }
+        && !extensions.contains(&ext.to_lowercase())
+    {
+        if config.debug {
+            debug!("[-] EXTENSION {} - Skipping file {}", ext, file_path);
+        }
+        return Ok(ProcessingResults::default());
+    }
 
     // Check file size
     let meta = fs::metadata(os_path)

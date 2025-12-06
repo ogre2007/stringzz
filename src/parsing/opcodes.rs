@@ -67,7 +67,7 @@ fn extract_pe_opcodes(pe: pe::PE, file_data: &[u8]) -> HashMap<String, TokenInfo
 pub fn extract_dex_opcodes(file_data: Vec<u8>) -> Result<HashMap<String, TokenInfo>> {
     let mut opcodes: HashMap<String, TokenInfo> = Default::default();
     if let Ok(dex) = dex::DexReader::from_vec(&file_data) {
-        println!("{:?}", dex.header());
+        //println!("{:?}", dex.header());
         for clazz in dex.classes().flatten() {
             for method in clazz.methods() {
                 if let Some(code) = method.code() {
