@@ -3,7 +3,7 @@ use std::{
     ffi::OsStr,
     fs::{self, File},
     io::Read,
-    path,
+    path::{self, PathBuf},
 };
 
 use crate::{
@@ -35,7 +35,6 @@ pub fn merge_stats(new: HashMap<String, TokenInfo>, stats: &mut HashMap<String, 
 #[derive(Debug, Clone, Default)]
 pub struct FileProcessor {
     pub config: Config,
-
     pub strings: HashMap<String, TokenInfo>,
     pub utf16strings: HashMap<String, TokenInfo>,
     pub opcodes: HashMap<String, TokenInfo>,
@@ -43,31 +42,32 @@ pub struct FileProcessor {
 }
 
 #[pyfunction]
-pub fn get_files(folder: String, recursive: bool) -> PyResult<Vec<String>> {
-    let mut files = Vec::new();
-
-    if !recursive {
-        if let Ok(entries) = fs::read_dir(folder) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file()
-                    && let Some(path_str) = path.to_str()
-                {
-                    files.push(path_str.to_string());
-                }
-            }
+pub fn get_files(folder: String, recursive: bool, max_file_count: usize) -> PyResult<Vec<String>> {
+    let entries: Vec<PathBuf> = if !recursive {
+        if let Ok(dir) = fs::read_dir(folder) {
+            dir.flatten()
+                .map(|x| x.path())
+                .filter(|x| x.is_file())
+                .collect()
+        } else {
+            Default::default()
         }
     } else {
-        for entry in WalkDir::new(&folder).into_iter().filter_map(|e| e.ok()) {
-            if entry.file_type().is_file()
-                && let Some(path_str) = entry.path().to_str()
-            {
-                files.push(path_str.to_string());
-            }
-        }
-    }
-
-    Ok(files)
+        WalkDir::new(&folder)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .map(|x| x.path().to_path_buf())
+            .collect()
+    };
+    let entries: Vec<String> = entries
+        .iter()
+        .filter_map(|x| x.to_str())
+        .take(max_file_count)
+        .map(|x| x.to_string())
+        .collect();
+    println!("found {} files (max {})", entries.len(), max_file_count);
+    Ok(entries)
 }
 
 pub fn process_buffer_u8(
@@ -145,11 +145,12 @@ impl ProcessingResults {
 
         for key in utf16_keys {
             if let Some(wide_info) = self.utf16strings.remove(&key)
-                && let Some(ascii_info) = strings_clone.get_mut(&key) {
-                    ascii_info.count += wide_info.count;
-                    ascii_info.also_wide = true;
-                    ascii_info.files.extend(wide_info.files);
-                }
+                && let Some(ascii_info) = strings_clone.get_mut(&key)
+            {
+                ascii_info.count += wide_info.count;
+                ascii_info.also_wide = true;
+                ascii_info.files.extend(wide_info.files);
+            }
         }
 
         self.strings = strings_clone;
@@ -191,7 +192,9 @@ impl FileProcessor {
     #[new]
     #[pyo3(signature = (config = None))]
     pub fn new(config: Option<Config>) -> PyResult<Self> {
+        //println!("{:?}", config);
         let config = config.unwrap_or_default();
+        //println!("{:?}", config);
         config.validate()?;
         Ok(Self {
             config,
@@ -201,7 +204,8 @@ impl FileProcessor {
 
     pub fn parse_sample_dir(&mut self, dir: String) -> PyResult<ProcessingResults> {
         // Get all files to process
-        let files = get_files(dir, self.config.recursive)?;
+        //println!("{:?}", self.config);
+        let files = get_files(dir, self.config.recursive, self.config.max_file_count)?;
 
         if self.config.debug {
             println!("[+] Processing {} files in parallel", files.len());
@@ -210,14 +214,15 @@ impl FileProcessor {
         // Clone config for each thread (it's small, so this is fine)
         let config = self.config.clone();
 
-        // Process files in parallel and collect results 
+        // Process files in parallel and collect results
         let results: Vec<Result<ProcessingResults>> = files
             .par_iter()
-            .map(|file_path| process_file_with_checks_parallel(file_path, &config))
+            //.into_iter()
+            .map(|file_path| process_file_with_checks_parallel(&file_path, &config))
             .collect();
 
         // Merge all results
-        let mut final_results = ProcessingResults::default(); 
+        let mut final_results = ProcessingResults::default();
         for result in results {
             match result {
                 Ok(partial_results) => {
@@ -235,7 +240,7 @@ impl FileProcessor {
         self.file_infos = final_results.file_infos;
         self.strings = final_results.strings;
         self.utf16strings = final_results.utf16strings;
-        self.opcodes = final_results.opcodes; 
+        self.opcodes = final_results.opcodes;
         // Deduplicate strings
         self.deduplicate_strings();
 
@@ -416,12 +421,16 @@ fn process_file_with_checks_parallel(
     let os_path = path::Path::new(file_path);
 
     // Check extension
+    // Process the file
+    if config.debug {
+        println!("Processing file {}", file_path);
+    }
     if let Some(extensions) = &config.extensions
         && let Some(ext) = os_path.extension().and_then(OsStr::to_str)
         && !extensions.contains(&ext.to_lowercase())
     {
         if config.debug {
-            debug!("[-] EXTENSION {} - Skipping file {}", ext, file_path);
+            println!("[-] EXTENSION {} - Skipping file {}", ext, file_path);
         }
         return Ok(ProcessingResults::default());
     }
@@ -436,7 +445,6 @@ fn process_file_with_checks_parallel(
         return Ok(ProcessingResults::default());
     }
 
-    // Process the file
     let (fi, strings, utf16strings, opcodes) = process_file_inner(file_path, config)?;
 
     let mut results = ProcessingResults {

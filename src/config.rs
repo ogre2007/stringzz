@@ -11,6 +11,8 @@ pub struct Config {
     #[pyo3(get, set)]
     pub max_file_size_mb: usize,
     #[pyo3(get, set)]
+    pub max_file_count: usize,
+    #[pyo3(get, set)]
     pub recursive: bool,
     #[pyo3(get, set)]
     pub extensions: Option<Vec<String>>,
@@ -30,6 +32,7 @@ struct InternalConfigBuilder {
     extensions: Option<Vec<String>>,
     extract_opcodes: Option<bool>,
     debug: Option<bool>,
+    max_file_count: Option<usize>,
 }
 
 impl InternalConfigBuilder {
@@ -49,6 +52,11 @@ impl InternalConfigBuilder {
 
     fn max_file_size_mb(mut self, value: usize) -> Self {
         self.max_file_size_mb = Some(value);
+        self
+    }
+
+    fn max_file_count(mut self, value: usize) -> Self {
+        self.max_file_count = Some(value);
         self
     }
 
@@ -81,6 +89,7 @@ impl InternalConfigBuilder {
             extensions: self.extensions,
             extract_opcodes: self.extract_opcodes.unwrap_or(false),
             debug: self.debug.unwrap_or(false),
+            max_file_count:  self.max_file_count.unwrap_or(10_000),
         };
 
         config.validate()?;
@@ -98,7 +107,8 @@ impl Config {
         recursive = None,
         extensions = None,
         extract_opcodes = None,
-        debug = None
+        debug = None,
+        max_file_count = None
     ))]
     pub fn new(
         min_string_len: Option<usize>,
@@ -108,6 +118,7 @@ impl Config {
         extensions: Option<Vec<String>>,
         extract_opcodes: Option<bool>,
         debug: Option<bool>,
+        max_file_count: Option<usize>
     ) -> PyResult<Self> {
         let mut builder = InternalConfigBuilder::new();
 
@@ -119,6 +130,9 @@ impl Config {
         }
         if let Some(v) = max_file_size_mb {
             builder = builder.max_file_size_mb(v);
+        }
+        if let Some(v) = max_file_count {
+            builder = builder.max_file_count(v);
         }
         if let Some(v) = recursive {
             builder = builder.recursive(v);
@@ -145,6 +159,7 @@ impl Config {
         extensions: Option<Vec<String>>,
         extract_opcodes: Option<bool>,
         debug: Option<bool>,
+        max_file_count: Option<usize>
     ) -> PyResult<Self> {
         Self::new(
             min_string_len,
@@ -154,6 +169,7 @@ impl Config {
             extensions,
             extract_opcodes,
             debug,
+            max_file_count,
         )
     }
 
@@ -174,6 +190,12 @@ impl Config {
                 "max_file_size_mb must be at least 1",
             ));
         }
+        if self.max_file_count == 0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "max_file_count must be at least 1",
+            ));
+        }
+
         Ok(())
     }
 }

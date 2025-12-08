@@ -61,6 +61,7 @@ class Config:
     extensions: Optional[List[str]]
     extract_opcodes: bool
     debug: bool
+    max_file_count: int
     
     def __init__(
         self,
@@ -70,7 +71,8 @@ class Config:
         recursive: Optional[bool] = None,
         extensions: Optional[List[str]] = None,
         extract_opcodes: Optional[bool] = None,
-        debug: Optional[bool] = None
+        debug: Optional[bool] = None,
+        max_file_count: Optional[int] = None
     ) -> None: ...
     
     @staticmethod
