@@ -130,19 +130,19 @@ mod tests {
         File::create(&file3).unwrap();
 
         // Test non-recursive
-        let files = get_files(temp_dir.path().to_str().unwrap().to_string(), false).unwrap();
+        let files = get_files(temp_dir.path().to_str().unwrap().to_string(), false, 10000).unwrap();
         assert_eq!(files.len(), 1); // Only file1.txt in root
         assert!(files[0].contains("file1.txt"));
 
         // Test recursive
-        let files = get_files(temp_dir.path().to_str().unwrap().to_string(), true).unwrap();
+        let files = get_files(temp_dir.path().to_str().unwrap().to_string(), true, 10000).unwrap();
         assert_eq!(files.len(), 3); // All three files
         assert!(files.iter().any(|f| f.contains("file1.txt")));
         assert!(files.iter().any(|f| f.contains("file2.txt")));
         assert!(files.iter().any(|f| f.contains("file3.txt")));
 
         // Test with non-existent directory
-        let files = get_files("/non/existent/directory".to_string(), true).unwrap();
+        let files = get_files("/non/existent/directory".to_string(), true, 10000).unwrap();
         assert!(files.is_empty());
     }
 
@@ -216,7 +216,7 @@ mod tests {
         let sub_file = sub_dir.join("file3.txt");
         File::create(&sub_file).unwrap();
 
-        let files = get_files(temp_dir.path().to_string_lossy().to_string(), false).unwrap();
+        let files = get_files(temp_dir.path().to_string_lossy().to_string(), false, 10000).unwrap();
 
         assert_eq!(files.len(), 2);
         assert!(files.iter().any(|f| f.contains("file1.txt")));
@@ -237,7 +237,7 @@ mod tests {
         let sub_file_path = sub_dir.join("file2.txt");
         File::create(&sub_file_path).unwrap();
 
-        let files = get_files(temp_dir.path().to_string_lossy().to_string(), true).unwrap();
+        let files = get_files(temp_dir.path().to_string_lossy().to_string(), true, 10000).unwrap();
 
         assert_eq!(files.len(), 2);
         assert!(files.iter().any(|f| f.contains("file1.txt")));
