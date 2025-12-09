@@ -4,7 +4,7 @@ name = "stringzz"
 description = "A library and tool for strings and opcodes extraction from various file formats"
 
 readme = "README.md" 
-version = "0.4.1"
+version = "0.4.2"
 keywords = ["strings", "malware", "yara", "maturin", "yara-generator"]  
 repository = "https://github.com/ogre2007/stringzz"
 authors = ["ogre2007 <oogre@vk.com>"]

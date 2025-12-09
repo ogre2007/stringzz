@@ -41,8 +41,8 @@ pub struct FileProcessor {
     pub file_infos: HashMap<String, FileInfo>,
 }
 
-#[pyfunction]
-pub fn get_files(folder: String, recursive: bool, max_file_count: usize) -> PyResult<Vec<String>> {
+
+pub fn get_files(folder: String, recursive: bool, max_file_count: usize) -> Result<Vec<String>> {
     let entries: Vec<PathBuf> = if !recursive {
         if let Ok(dir) = fs::read_dir(folder) {
             dir.flatten()
@@ -205,7 +205,7 @@ impl FileProcessor {
     pub fn parse_sample_dir(&mut self, dir: String) -> PyResult<ProcessingResults> {
         // Get all files to process
         //println!("{:?}", self.config);
-        let files = get_files(dir, self.config.recursive, self.config.max_file_count)?;
+        let files = get_files(dir, self.config.recursive, self.config.max_file_count).unwrap();
 
         if self.config.debug {
             println!("[+] Processing {} files in parallel", files.len());
@@ -343,6 +343,7 @@ impl FileProcessor {
 
         // For the deduplication part, let's keep it simple and sequential
         // The performance impact is likely minimal compared to file processing
+        return;
         let keys: Vec<String> = self.strings.keys().cloned().collect();
 
         // Group strings by length to optimize checks
