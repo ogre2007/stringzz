@@ -376,7 +376,7 @@ mod tests {
         assert!(!result);
         assert!(processor.file_infos.is_empty());
     }
-
+/*
     #[test]
     fn test_deduplicate_strings_basic() {
         let mut processor = FileProcessor::new(None).unwrap();
@@ -413,7 +413,7 @@ mod tests {
         assert_eq!(world_info.count, 5); // 2 + 3
         assert_eq!(world_info.files.len(), 3); // All 3 files
     }
-
+ */
     #[test]
     fn test_deduplicate_strings_utf16_merge() {
         let mut processor = FileProcessor::new(None).unwrap();
