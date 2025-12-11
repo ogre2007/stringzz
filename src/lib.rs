@@ -46,12 +46,7 @@ use pyo3::{
 };
 
 use rayon::prelude::*;
-use std::{
-    cmp::min,
-    collections::{HashMap, HashSet},
-};
-
-use anyhow::Result;
+use std::collections::HashMap;
 
 use pyo3::prelude::*;
 use regex::Regex;
@@ -67,137 +62,6 @@ pub fn extract_strings(
         extract_and_count_ascii_strings(&file_data, min_len, max_len),
         extract_and_count_utf16_strings(&file_data, min_len, max_len),
     ))
-}
-
-pub fn extract_and_count_ascii_strings(
-    data: &[u8],
-    min_len: usize,
-    max_len: usize,
-) -> HashMap<String, TokenInfo> {
-    let mut current_string = String::new();
-    let mut stats: HashMap<String, TokenInfo> = HashMap::new();
-    //println!("{:?}", data);
-    for &byte in data {
-        if (0x20..=0x7E).contains(&byte) && current_string.len() <= max_len {
-            current_string.push(byte as char);
-        } else {
-            if current_string.len() >= min_len {
-                stats
-                    .entry(current_string.clone())
-                    .or_insert(TokenInfo::new(
-                        current_string.clone(),
-                        0,
-                        TokenType::ASCII,
-                        HashSet::new(),
-                        None,
-                    ))
-                    .count += 1;
-            }
-            current_string.clear();
-        }
-    }
-    //println!("{:?}", stats);
-    if current_string.len() >= min_len && current_string.len() <= max_len {
-        stats
-            .entry(current_string.clone())
-            .or_insert(TokenInfo::new(
-                current_string.clone(),
-                0,
-                TokenType::ASCII,
-                HashSet::new(),
-                None,
-            ))
-            .count += 1;
-        assert!(!stats.get(&current_string.clone()).unwrap().reprz.is_empty());
-    }
-    stats.clone()
-}
-
-// Alternative implementation that handles UTF-16 more robustly
-pub fn extract_and_count_utf16_strings(
-    data: &[u8],
-    min_len: usize,
-    max_len: usize,
-) -> HashMap<String, TokenInfo> {
-    let mut current_string = String::new();
-    let mut stats: HashMap<String, TokenInfo> = HashMap::new();
-    let mut i = 0;
-
-    while i + 1 < data.len() {
-        let code_unit = u16::from_le_bytes([data[i], data[i + 1]]);
-
-        // Handle different cases for UTF-16
-        match code_unit {
-            // Printable ASCII range
-            0x0020..=0x007E => {
-                if let Some(ch) = char::from_u32(code_unit as u32) {
-                    current_string.push(ch);
-                } else {
-                    if current_string.len() >= min_len {
-                        //println!("UTF16LE: {}", current_string);
-
-                        stats
-                            .entry(current_string.clone())
-                            .or_insert(TokenInfo::new(
-                                current_string.clone(),
-                                0,
-                                TokenType::UTF16LE,
-                                HashSet::new(),
-                                None,
-                            ))
-                            .count += 1;
-                    }
-                    current_string.clear();
-                }
-            }
-            // Null character or other control characters - end of string
-            _ => {
-                if current_string.len() >= min_len {
-                    stats
-                        .entry(current_string.clone())
-                        .or_insert(TokenInfo::new(
-                            current_string.clone(),
-                            0,
-                            TokenType::UTF16LE,
-                            HashSet::new(),
-                            None,
-                        ))
-                        .count += 1;
-                }
-                current_string.clear();
-            }
-        }
-
-        i += 2;
-    }
-
-    // Final string
-    if current_string.len() >= min_len {
-        stats
-            .entry(current_string[..min(max_len, current_string.len())].to_owned())
-            .or_insert(TokenInfo::new(
-                current_string.clone(),
-                0,
-                TokenType::UTF16LE,
-                HashSet::new(),
-                None,
-            ))
-            .count += 1;
-
-        if current_string.len() as i64 - max_len as i64 >= min_len as i64 {
-            stats
-                .entry(current_string[max_len..].to_owned())
-                .or_insert(TokenInfo::new(
-                    current_string.clone(),
-                    0,
-                    TokenType::UTF16LE,
-                    HashSet::new(),
-                    None,
-                ))
-                .count += 1;
-        }
-    }
-    stats
 }
 
 /// Remove non-ASCII characters from bytes, keeping printable ASCII 0x20..0x7E
@@ -305,45 +169,6 @@ pub fn init_analysis(
 }
 
 #[pyfunction]
-pub fn process_buffer(
-    buffer: Vec<u8>,
-    fp: PyRefMut<FileProcessor>,
-    mut scoring_engine: PyRefMut<ScoringEngine>,
-) -> PyResult<(
-    HashMap<String, FileInfo>,
-    HashMap<String, Vec<TokenInfo>>,
-    HashMap<String, Vec<TokenInfo>>,
-    HashMap<String, Vec<TokenInfo>>,
-)> {
-    let file_name = "data";
-    let mut file_infos = HashMap::new();
-
-    let (fi, string_stats, utf16strings, opcodes) = processing::process_buffer_u8(
-        buffer[..min(fp.config.max_file_size_mb * 1024 * 1024, buffer.len())].to_vec(),
-        &fp.config,
-    )
-    .unwrap();
-    let mut file_strings = HashMap::new();
-    file_strings.insert(
-        file_name.to_string(),
-        scoring_engine.filter_string_set(string_stats.into_values().collect())?,
-    );
-
-    let mut file_utf16strings = HashMap::new();
-    file_utf16strings.insert(
-        file_name.to_string(),
-        scoring_engine.filter_string_set(utf16strings.into_values().collect())?,
-    );
-    let mut file_opcodes = HashMap::new();
-    file_opcodes.insert(
-        file_name.to_string(),
-        scoring_engine.filter_string_set(opcodes.into_values().collect())?,
-    );
-    file_infos.insert(file_name.to_string(), fi);
-    Ok((file_infos, file_strings, file_opcodes, file_utf16strings))
-}
-
-#[pyfunction]
 pub fn process_file(
     malware_path: String,
     mut fp: FileProcessor,
@@ -364,208 +189,12 @@ pub fn process_file(
     Ok((string_stats, opcodes, utf16strings, file_infos))
 }
 
-#[pyfunction]
-pub fn process_buffers_parallel(
-    buffers: Vec<Vec<u8>>,
-    fp: PyRefMut<FileProcessor>,
-    mut scoring_engine: PyRefMut<ScoringEngine>,
-) -> PyResult<(
-    HashMap<String, FileInfo>,
-    HashMap<String, Vec<TokenInfo>>,
-    HashMap<String, Vec<TokenInfo>>,
-    HashMap<String, Vec<TokenInfo>>,
-)> {
-    if buffers.is_empty() {
-        return Ok((
-            HashMap::new(),
-            HashMap::new(),
-            HashMap::new(),
-            HashMap::new(),
-        ));
-    }
-
-    let config = fp.config.clone();
-    let max_file_size = config.max_file_size_mb * 1024 * 1024;
-
-    // Process buffers in parallel
-    let results: Vec<
-        Result<(
-            FileInfo,
-            HashMap<String, TokenInfo>,
-            HashMap<String, TokenInfo>,
-            HashMap<String, TokenInfo>,
-        )>,
-    > = buffers
-        .par_iter()
-        .enumerate()
-        .map(|(i, buffer)| {
-            // Limit buffer size
-            let limited_buffer = if buffer.len() > max_file_size {
-                buffer[..max_file_size].to_vec()
-            } else {
-                buffer.clone()
-            };
-
-            process_buffer_u8(limited_buffer, &config)
-                .map_err(|e| anyhow::anyhow!("Failed to process buffer {}: {}", i, e))
-        })
-        .collect();
-
-    // Collect results
-    let mut file_infos = HashMap::new();
-    let mut all_strings = HashMap::new();
-    let mut all_utf16strings = HashMap::new();
-    let mut all_opcodes = HashMap::new();
-
-    for (i, result) in results.into_iter().enumerate() {
-        match result {
-            Ok((fi, strings, utf16strings, opcodes)) => {
-                let file_name = format!("buffer_{}", i);
-                file_infos.insert(file_name.clone(), fi);
-
-                // Add file reference to token infos
-                let mut file_strings = HashMap::new();
-                let mut file_utf16strings = HashMap::new();
-                let mut file_opcodes = HashMap::new();
-
-                for (_, mut ti) in strings {
-                    ti.files.insert(file_name.clone());
-                    file_strings.insert(ti.reprz.clone(), ti);
-                }
-
-                for (_, mut ti) in utf16strings {
-                    ti.files.insert(file_name.clone());
-                    file_utf16strings.insert(ti.reprz.clone(), ti);
-                }
-
-                for (_, mut ti) in opcodes {
-                    ti.files.insert(file_name.clone());
-                    file_opcodes.insert(ti.reprz.clone(), ti);
-                }
-
-                // Filter strings through scoring engine
-                let filtered_strings =
-                    scoring_engine.filter_string_set(file_strings.into_values().collect())?;
-                let filtered_utf16strings =
-                    scoring_engine.filter_string_set(file_utf16strings.into_values().collect())?;
-                let filtered_opcodes =
-                    scoring_engine.filter_string_set(file_opcodes.into_values().collect())?;
-
-                all_strings.insert(file_name.clone(), filtered_strings);
-                all_utf16strings.insert(file_name.clone(), filtered_utf16strings);
-                all_opcodes.insert(file_name.clone(), filtered_opcodes);
-            }
-            Err(e) => {
-                if config.debug {
-                    println!("[-] Error processing buffer {}: {}", i, e);
-                }
-            }
-        }
-    }
-
-    Ok((file_infos, all_strings, all_opcodes, all_utf16strings))
-}
-
-pub fn process_buffers_with_stats(
-    buffers: &Vec<Vec<u8>>,
-    fp: PyRefMut<FileProcessor>,
-) -> PyResult<ProcessingResults> {
-    if buffers.is_empty() {
-        return Ok(ProcessingResults::default());
-    }
-
-    let config = fp.config.clone();
-    let max_file_size = config.max_file_size_mb * 1024 * 1024;
-
-    // Process buffers in parallel
-    let results: Vec<
-        Result<(
-            FileInfo,
-            HashMap<String, TokenInfo>,
-            HashMap<String, TokenInfo>,
-            HashMap<String, TokenInfo>,
-        )>,
-    > = buffers
-        .par_iter()
-        .enumerate()
-        .map(|(i, buffer)| {
-            // Limit buffer size
-            let limited_buffer = if buffer.len() > max_file_size {
-                buffer[..max_file_size].to_vec()
-            } else {
-                buffer.clone()
-            };
-
-            process_buffer_u8(limited_buffer, &config)
-                .map_err(|e| anyhow::anyhow!("Failed to process buffer {}: {}", i, e))
-        })
-        .collect();
-
-    // Merge results
-    let mut final_results = ProcessingResults::default();
-
-    for (i, result) in results.into_iter().enumerate() {
-        match result {
-            Ok((fi, mut strings, mut utf16strings, mut opcodes)) => {
-                let file_name = format!("buffer_{}", i);
-
-                // Check for SHA256 duplicates before adding
-                if !final_results
-                    .file_infos
-                    .values()
-                    .any(|existing_fi| existing_fi.sha256 == fi.sha256)
-                {
-                    final_results.file_infos.insert(file_name.clone(), fi);
-
-                    // Add file reference to token infos
-                    for (_, ti) in strings.iter_mut() {
-                        ti.files.insert(file_name.clone());
-                    }
-                    for (_, ti) in utf16strings.iter_mut() {
-                        ti.files.insert(file_name.clone());
-                    }
-                    for (_, ti) in opcodes.iter_mut() {
-                        ti.files.insert(file_name.clone());
-                    }
-
-                    // Merge into final results
-                    for (tok, info) in strings {
-                        let entry = final_results.strings.entry(tok).or_default();
-                        entry.merge(&info);
-                    }
-
-                    for (tok, info) in utf16strings {
-                        let entry = final_results.utf16strings.entry(tok).or_default();
-                        entry.merge(&info);
-                    }
-
-                    for (tok, info) in opcodes {
-                        let entry = final_results.opcodes.entry(tok).or_default();
-                        entry.merge(&info);
-                    }
-                }
-            }
-            Err(e) => {
-                if config.debug {
-                    println!("[-] Error processing buffer {}: {}", i, e);
-                }
-            }
-        }
-    }
-
-    // Deduplicate strings (if needed)
-    // Note: You might need to make deduplicate_strings available or implement it differently
-    // For now, we'll skip deduplication since it requires mutable access to FileProcessor
-
-    Ok(final_results)
-}
-
 // Add a new function that returns comprehensive analysis results
 #[pyfunction]
 pub fn analyze_buffers_comprehensive(
     buffers: Vec<Vec<u8>>,
     fp: PyRefMut<FileProcessor>,
-    mut scoring_engine: PyRefMut<ScoringEngine>,
+    scoring_engine: PyRefMut<ScoringEngine>,
 ) -> PyResult<(
     HashMap<String, Combination>,
     Vec<Combination>,
@@ -579,23 +208,69 @@ pub fn analyze_buffers_comprehensive(
     HashMap<String, FileInfo>,
 )> {
     // First, process buffers to get aggregated stats
-    let processing_results = process_buffers_with_stats(&buffers, fp)?;
+    let results = process_buffers_with_stats(&buffers, fp)?;
 
-    // Now analyze the results similar to process_malware
+    process_results(results, scoring_engine)
+}
+
+pub fn process_results(
+    results: ProcessingResults,
+    mut scoring_engine: PyRefMut<ScoringEngine>,
+) -> PyResult<(
+    HashMap<String, Combination>,
+    Vec<Combination>,
+    HashMap<String, Combination>,
+    Vec<Combination>,
+    HashMap<String, Combination>,
+    Vec<Combination>,
+    HashMap<String, Vec<TokenInfo>>,
+    HashMap<String, Vec<TokenInfo>>,
+    HashMap<String, Vec<TokenInfo>>,
+    HashMap<String, FileInfo>,
+)> {
     let (string_combis, string_superrules, file_strings) = scoring_engine
-        .sample_string_evaluation(processing_results.strings.clone())
+        .sample_string_evaluation(results.strings)
         .unwrap();
-
     let (utf16_combis, utf16_superrules, file_utf16strings) = scoring_engine
-        .sample_string_evaluation(processing_results.utf16strings.clone())
+        .sample_string_evaluation(results.utf16strings)
         .unwrap();
+    let mut file_opcodes = Default::default();
+    let opcode_combis = Default::default();
+    let opcode_superrules = Default::default();
+    extract_stats_by_file(&results.opcodes, &mut file_opcodes, None, None);
 
-    let mut file_opcodes = HashMap::new();
-    let opcode_combis = HashMap::new();
-    let opcode_superrules = Vec::new();
+    let file_strings = file_strings
+        .iter()
+        .map(|(x, tokens)| {
+            (
+                x.clone(),
+                scoring_engine.filter_string_set(tokens.to_vec()).unwrap(),
+            )
+        })
+        .collect();
+    let file_utf16strings = file_utf16strings
+        .iter()
+        .map(|(x, tokens)| {
+            (
+                x.clone(),
+                scoring_engine.filter_string_set(tokens.to_vec()).unwrap(),
+            )
+        })
+        .collect();
+    file_opcodes = file_opcodes
+        .iter()
+        .map(|(x, tokens)| {
+            (
+                x.clone(),
+                scoring_engine.filter_opcode_set(tokens.to_vec()).unwrap(),
+            )
+        })
+        .collect();
 
-    extract_stats_by_file(&processing_results.opcodes, &mut file_opcodes, None, None);
+    /*let (opcode_combis, opcode_superrules, file_opcodes) = scoring_engine
 
+    .sample_string_evaluation(scoring_engine.opcodes.clone())
+    .unwrap();*/
     Ok((
         string_combis,
         string_superrules,
@@ -606,7 +281,7 @@ pub fn analyze_buffers_comprehensive(
         file_strings,
         file_opcodes,
         file_utf16strings,
-        processing_results.file_infos,
+        results.file_infos,
     ))
 }
 
@@ -614,7 +289,7 @@ pub fn analyze_buffers_comprehensive(
 pub fn process_malware(
     malware_path: String,
     mut fp: PyRefMut<FileProcessor>,
-    mut scoring_engine: PyRefMut<ScoringEngine>,
+    scoring_engine: PyRefMut<ScoringEngine>,
 ) -> PyResult<(
     HashMap<String, Combination>,
     Vec<Combination>,
@@ -633,32 +308,7 @@ pub fn process_malware(
 
     info!("Processing malware files...");
     let results = fp.parse_sample_dir(malware_path).unwrap();
-
-    let (string_combis, string_superrules, file_strings) = scoring_engine
-        .sample_string_evaluation(results.strings)
-        .unwrap();
-    let (utf16_combis, utf16_superrules, file_utf16strings) = scoring_engine
-        .sample_string_evaluation(results.utf16strings)
-        .unwrap();
-    let mut file_opcodes = Default::default();
-    let opcode_combis = Default::default();
-    let opcode_superrules = Default::default();
-    extract_stats_by_file(&results.opcodes, &mut file_opcodes, None, None);
-    /*let (opcode_combis, opcode_superrules, file_opcodes) = scoring_engine
-    .sample_string_evaluation(scoring_engine.opcodes.clone())
-    .unwrap();*/
-    Ok((
-        string_combis,
-        string_superrules,
-        utf16_combis,
-        utf16_superrules,
-        opcode_combis,
-        opcode_superrules,
-        file_strings,
-        file_opcodes,
-        file_utf16strings,
-        results.file_infos,
-    ))
+    process_results(results, scoring_engine)
 }
 
 #[pymodule]
@@ -674,8 +324,6 @@ fn stringzz(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(is_base_64, m)?)?;
     m.add_function(wrap_pyfunction!(is_hex_encoded, m)?)?;
     m.add_function(wrap_pyfunction!(init_analysis, m)?)?;
-    m.add_function(wrap_pyfunction!(process_buffer, m)?)?;
-    m.add_function(wrap_pyfunction!(process_buffers_parallel, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_buffers_comprehensive, m)?)?;
 
     m.add_class::<TokenInfo>()?;

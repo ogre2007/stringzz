@@ -30,7 +30,7 @@ pub struct TokenInfo {
     #[pyo3(get, set)]
     pub files: HashSet<String>,
     #[pyo3(get, set)]
-    pub notes: String,
+    pub notes: Vec<String>,
     #[pyo3(get, set)]
     pub score: i64,
     #[pyo3(get, set)]
@@ -45,6 +45,8 @@ pub struct TokenInfo {
     pub from_pestudio: bool,
     #[pyo3(get, set)]
     pub also_wide: bool,
+    #[pyo3(get, set)]
+    pub good_string: bool,
 }
 
 #[pymethods]
@@ -55,7 +57,7 @@ impl TokenInfo {
         count: usize,
         typ: TokenType,
         files: HashSet<String>,
-        notes: Option<String>,
+        notes: Option<Vec<String>>,
     ) -> Self {
         if reprz.is_empty() {
             panic!()
@@ -90,7 +92,7 @@ impl TokenInfo {
             self.from_pestudio
         )
     }
-    pub fn generate_string_repr(&self, i: i32, is_super_string: bool) -> String {
+    pub fn generate_string_repr(&self, i: usize, is_super_string: bool, comments: bool) -> String {
         let id = if is_super_string { "x" } else { "s" };
         let repr = self.reprz.replace("\\", "\\\\").replace("\"", "\\\"");
         let wideness = if self.typ == TokenType::UTF16LE {
@@ -100,25 +102,20 @@ impl TokenInfo {
         } else {
             "ascii"
         };
-
         let full = if self.fullword { "fullword" } else { "" };
 
-        format!(
-            "\t\t${}{} = \"{}\" {} {} /*{}*/",
-            id,
-            i + 1,
-            repr,
-            wideness,
-            full,
-            self.notes
-        )
+        let mut result = format!("\t\t${}{} = \"{}\" {} {} ", id, i, repr, wideness, full);
+        if comments {
+            result += &format!("/*{} / score: {}*/", self.notes.join(", "), self.score);
+        }
+        result
     }
     pub fn merge(&mut self, value: &Self) {
         self.count += value.count;
         self.files.extend(value.files.clone());
         self.reprz = value.reprz.clone();
-        self.notes += &value.notes;
-        self.score += value.score;
+        self.notes.extend(value.notes.clone());
+        self.score = max(self.score, value.score);
         self.typ = value.typ;
         self.fullword = value.fullword;
     }
@@ -126,7 +123,7 @@ impl TokenInfo {
     pub fn merge_existed(&mut self, value: &Self) {
         self.count += value.count;
         self.files.extend(value.files.clone());
-        self.notes += &value.notes;
+        self.notes.extend(value.notes.clone());
         self.score = max(value.score, self.score);
         if !self.fullword {
             self.fullword = value.fullword;
@@ -141,6 +138,6 @@ impl TokenInfo {
     }
 
     pub fn add_note(&mut self, value: String) {
-        self.notes += &format!(", {}", value);
+        self.notes.push(value);
     }
 }

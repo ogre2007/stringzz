@@ -152,35 +152,25 @@ pub fn extract_stats_by_file(
 impl ScoringEngine {
     pub fn generate_rule_strings(
         &self,
-        score: bool,
-        min_score: i64,
         high_scoring: f64,
         strings_per_rule: usize,
         mut string_elements: Vec<TokenInfo>,
+        comments: bool,
     ) -> PyResult<(Vec<String>, usize)> {
         let mut rule_strings = Vec::new();
         string_elements.sort_by(|a, b| b.score.cmp(&a.score));
 
+        string_elements = string_elements.into_iter().take(strings_per_rule).collect();
+
         let mut high_scoring_strings = 0;
-        let mut i = 0;
-        for stringe in string_elements.iter_mut() {
-            if score && min_score > stringe.score {
-                continue;
-            }
+
+        for (i, stringe) in string_elements.iter_mut().enumerate() {
             let string = stringe.reprz.clone();
             if self.good_strings_db.contains_key(&string) {
                 stringe.add_note(format!(
                     "goodware string - occured {} times",
                     self.good_strings_db[&string]
                 ));
-                if self.excludegood {
-                    continue;
-                }
-            }
-            if score {
-                stringe.add_note(format!(" / score: {} /", stringe.score));
-            } else {
-                //logging.getLogger("yarobot").debug("NO SCORE: %s", string)
             }
 
             if stringe.b64 {
@@ -195,7 +185,7 @@ impl ScoringEngine {
                     remove_non_ascii_drop(self.hex_enc_strings[&string].as_bytes()).unwrap()
                 ));
             }
-            if stringe.from_pestudio && score {
+            if stringe.from_pestudio {
                 stringe.add_note(format!(
                     " / PEStudio Blacklist: {} /",
                     self.pestudio_marker[&string]
@@ -212,19 +202,9 @@ impl ScoringEngine {
             if is_super_string {
                 high_scoring_strings += 1;
             }
-            rule_strings.push(stringe.generate_string_repr(i, is_super_string));
-
-            if i + 1 >= strings_per_rule.try_into().unwrap() {
-                break;
-            }
-            i += 1;
+            rule_strings.push(stringe.generate_string_repr(i, is_super_string, comments));
         }
-        /*
 
-
-
-
-        */
         Ok((rule_strings, high_scoring_strings))
     }
 
@@ -272,9 +252,7 @@ impl ScoringEngine {
     }
 
     pub fn filter_string_set(&mut self, tokens: Vec<TokenInfo>) -> PyResult<Vec<TokenInfo>> {
-        if tokens.is_empty() {
-            //panic!();
-        }
+        tokens.is_empty();
 
         let mut local_string_scores = Vec::new();
 

@@ -1,4 +1,5 @@
 use std::{
+    cmp::min,
     collections::{HashMap, HashSet},
     ffi::OsStr,
     fs::{self, File},
@@ -6,16 +7,238 @@ use std::{
     path::{self, PathBuf},
 };
 
-use crate::{
-    Config, FileInfo, TokenInfo, TokenType, extract_and_count_ascii_strings,
-    extract_and_count_utf16_strings, extract_opcodes, get_file_info,
-};
+use crate::{Config, FileInfo, TokenInfo, TokenType, extract_opcodes, get_file_info};
 use rayon::prelude::*;
 
 use anyhow::{Context, Result};
 use log::debug;
 use pyo3::prelude::*;
 use walkdir::WalkDir;
+
+pub fn process_buffers_with_stats(
+    buffers: &Vec<Vec<u8>>,
+    fp: PyRefMut<FileProcessor>,
+) -> PyResult<ProcessingResults> {
+    if buffers.is_empty() {
+        return Ok(ProcessingResults::default());
+    }
+
+    let config = fp.config.clone();
+    let max_file_size = config.max_file_size_mb * 1024 * 1024;
+
+    // Process buffers in parallel
+    let results: Vec<
+        Result<(
+            FileInfo,
+            HashMap<String, TokenInfo>,
+            HashMap<String, TokenInfo>,
+            HashMap<String, TokenInfo>,
+        )>,
+    > = buffers
+        .par_iter()
+        .enumerate()
+        .map(|(i, buffer)| {
+            // Limit buffer size
+            let limited_buffer = if buffer.len() > max_file_size {
+                buffer[..max_file_size].to_vec()
+            } else {
+                buffer.clone()
+            };
+
+            process_buffer_u8(limited_buffer, &config)
+                .map_err(|e| anyhow::anyhow!("Failed to process buffer {}: {}", i, e))
+        })
+        .collect();
+
+    // Merge results
+    let mut final_results = ProcessingResults::default();
+
+    for (i, result) in results.into_iter().enumerate() {
+        match result {
+            Ok((fi, mut strings, mut utf16strings, mut opcodes)) => {
+                let file_name = format!("buffer_{}", i);
+
+                // Check for SHA256 duplicates before adding
+                if !final_results
+                    .file_infos
+                    .values()
+                    .any(|existing_fi| existing_fi.sha256 == fi.sha256)
+                {
+                    final_results.file_infos.insert(file_name.clone(), fi);
+
+                    // Add file reference to token infos
+                    for (_, ti) in strings.iter_mut() {
+                        ti.files.insert(file_name.clone());
+                    }
+                    for (_, ti) in utf16strings.iter_mut() {
+                        ti.files.insert(file_name.clone());
+                    }
+                    for (_, ti) in opcodes.iter_mut() {
+                        ti.files.insert(file_name.clone());
+                    }
+
+                    // Merge into final results
+                    for (tok, info) in strings {
+                        let entry = final_results.strings.entry(tok).or_default();
+                        entry.merge(&info);
+                    }
+
+                    for (tok, info) in utf16strings {
+                        let entry = final_results.utf16strings.entry(tok).or_default();
+                        entry.merge(&info);
+                    }
+
+                    for (tok, info) in opcodes {
+                        let entry = final_results.opcodes.entry(tok).or_default();
+                        entry.merge(&info);
+                    }
+                }
+            }
+            Err(e) => {
+                if config.debug {
+                    println!("[-] Error processing buffer {}: {}", i, e);
+                }
+            }
+        }
+    }
+
+    // Deduplicate strings (if needed)
+    // Note: You might need to make deduplicate_strings available or implement it differently
+    // For now, we'll skip deduplication since it requires mutable access to FileProcessor
+
+    Ok(final_results)
+}
+
+pub fn extract_and_count_ascii_strings(
+    data: &[u8],
+    min_len: usize,
+    max_len: usize,
+) -> HashMap<String, TokenInfo> {
+    let mut current_string = String::new();
+    let mut stats: HashMap<String, TokenInfo> = HashMap::new();
+    //println!("{:?}", data);
+    for &byte in data {
+        if (0x20..=0x7E).contains(&byte) && current_string.len() <= max_len {
+            current_string.push(byte as char);
+        } else {
+            if current_string.len() >= min_len {
+                stats
+                    .entry(current_string.clone())
+                    .or_insert(TokenInfo::new(
+                        current_string.clone(),
+                        0,
+                        TokenType::ASCII,
+                        HashSet::new(),
+                        None,
+                    ))
+                    .count += 1;
+            }
+            current_string.clear();
+        }
+    }
+    //println!("{:?}", stats);
+    if current_string.len() >= min_len && current_string.len() <= max_len {
+        stats
+            .entry(current_string.clone())
+            .or_insert(TokenInfo::new(
+                current_string.clone(),
+                0,
+                TokenType::ASCII,
+                HashSet::new(),
+                None,
+            ))
+            .count += 1;
+        assert!(!stats.get(&current_string.clone()).unwrap().reprz.is_empty());
+    }
+    stats.clone()
+}
+
+// Alternative implementation that handles UTF-16 more robustly
+pub fn extract_and_count_utf16_strings(
+    data: &[u8],
+    min_len: usize,
+    max_len: usize,
+) -> HashMap<String, TokenInfo> {
+    let mut current_string = String::new();
+    let mut stats: HashMap<String, TokenInfo> = HashMap::new();
+    let mut i = 0;
+
+    while i + 1 < data.len() {
+        let code_unit = u16::from_le_bytes([data[i], data[i + 1]]);
+
+        // Handle different cases for UTF-16
+        match code_unit {
+            // Printable ASCII range
+            0x0020..=0x007E => {
+                if let Some(ch) = char::from_u32(code_unit as u32) {
+                    current_string.push(ch);
+                } else {
+                    if current_string.len() >= min_len {
+                        //println!("UTF16LE: {}", current_string);
+
+                        stats
+                            .entry(current_string.clone())
+                            .or_insert(TokenInfo::new(
+                                current_string.clone(),
+                                0,
+                                TokenType::UTF16LE,
+                                HashSet::new(),
+                                None,
+                            ))
+                            .count += 1;
+                    }
+                    current_string.clear();
+                }
+            }
+            // Null character or other control characters - end of string
+            _ => {
+                if current_string.len() >= min_len {
+                    stats
+                        .entry(current_string.clone())
+                        .or_insert(TokenInfo::new(
+                            current_string.clone(),
+                            0,
+                            TokenType::UTF16LE,
+                            HashSet::new(),
+                            None,
+                        ))
+                        .count += 1;
+                }
+                current_string.clear();
+            }
+        }
+
+        i += 2;
+    }
+
+    // Final string
+    if current_string.len() >= min_len {
+        stats
+            .entry(current_string[..min(max_len, current_string.len())].to_owned())
+            .or_insert(TokenInfo::new(
+                current_string.clone(),
+                0,
+                TokenType::UTF16LE,
+                HashSet::new(),
+                None,
+            ))
+            .count += 1;
+
+        if current_string.len() as i64 - max_len as i64 >= min_len as i64 {
+            stats
+                .entry(current_string[max_len..].to_owned())
+                .or_insert(TokenInfo::new(
+                    current_string.clone(),
+                    0,
+                    TokenType::UTF16LE,
+                    HashSet::new(),
+                    None,
+                ))
+                .count += 1;
+        }
+    }
+    stats
+}
 
 pub fn merge_stats(new: HashMap<String, TokenInfo>, stats: &mut HashMap<String, TokenInfo>) {
     for (tok, info) in new.into_iter() {
@@ -40,7 +263,6 @@ pub struct FileProcessor {
     pub opcodes: HashMap<String, TokenInfo>,
     pub file_infos: HashMap<String, FileInfo>,
 }
-
 
 pub fn get_files(folder: String, recursive: bool, max_file_count: usize) -> Result<Vec<String>> {
     let entries: Vec<PathBuf> = if !recursive {
@@ -218,7 +440,7 @@ impl FileProcessor {
         let results: Vec<Result<ProcessingResults>> = files
             .par_iter()
             //.into_iter()
-            .map(|file_path| process_file_with_checks_parallel(&file_path, &config))
+            .map(|file_path| process_file_with_checks_parallel(file_path, &config))
             .collect();
 
         // Merge all results
@@ -341,8 +563,6 @@ impl FileProcessor {
             }
         }
 
-        // For the deduplication part, let's keep it simple and sequential
-        // The performance impact is likely minimal compared to file processing
         return;
         let keys: Vec<String> = self.strings.keys().cloned().collect();
 

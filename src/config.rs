@@ -89,7 +89,7 @@ impl InternalConfigBuilder {
             extensions: self.extensions,
             extract_opcodes: self.extract_opcodes.unwrap_or(false),
             debug: self.debug.unwrap_or(false),
-            max_file_count:  self.max_file_count.unwrap_or(10_000),
+            max_file_count: self.max_file_count.unwrap_or(10_000),
         };
 
         config.validate()?;
@@ -118,7 +118,7 @@ impl Config {
         extensions: Option<Vec<String>>,
         extract_opcodes: Option<bool>,
         debug: Option<bool>,
-        max_file_count: Option<usize>
+        max_file_count: Option<usize>,
     ) -> PyResult<Self> {
         let mut builder = InternalConfigBuilder::new();
 
@@ -159,7 +159,7 @@ impl Config {
         extensions: Option<Vec<String>>,
         extract_opcodes: Option<bool>,
         debug: Option<bool>,
-        max_file_count: Option<usize>
+        max_file_count: Option<usize>,
     ) -> PyResult<Self> {
         Self::new(
             min_string_len,

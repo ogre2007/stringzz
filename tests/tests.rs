@@ -376,44 +376,44 @@ mod tests {
         assert!(!result);
         assert!(processor.file_infos.is_empty());
     }
-/*
-    #[test]
-    fn test_deduplicate_strings_basic() {
-        let mut processor = FileProcessor::new(None).unwrap();
+    /*
+       #[test]
+       fn test_deduplicate_strings_basic() {
+           let mut processor = FileProcessor::new(None).unwrap();
 
-        // Create strings where one contains another
-        let info1 = TokenInfo {
-            reprz: "HelloWorld".to_string(),
-            count: 2,
-            files: HashSet::from(["file1.exe".to_string(), "file2.exe".to_string()]),
-            typ: TokenType::ASCII,
-            also_wide: false,
-            ..Default::default()
-        };
+           // Create strings where one contains another
+           let info1 = TokenInfo {
+               reprz: "HelloWorld".to_string(),
+               count: 2,
+               files: HashSet::from(["file1.exe".to_string(), "file2.exe".to_string()]),
+               typ: TokenType::ASCII,
+               also_wide: false,
+               ..Default::default()
+           };
 
-        let info2 = TokenInfo {
-            reprz: "World".to_string(),
-            count: 3,
-            files: HashSet::from(["file3.exe".to_string()]),
-            typ: TokenType::ASCII,
-            also_wide: false,
-            ..Default::default()
-        };
+           let info2 = TokenInfo {
+               reprz: "World".to_string(),
+               count: 3,
+               files: HashSet::from(["file3.exe".to_string()]),
+               typ: TokenType::ASCII,
+               also_wide: false,
+               ..Default::default()
+           };
 
-        processor.strings.insert("HelloWorld".to_string(), info1);
-        processor.strings.insert("World".to_string(), info2);
+           processor.strings.insert("HelloWorld".to_string(), info1);
+           processor.strings.insert("World".to_string(), info2);
 
-        processor.deduplicate_strings();
+           processor.deduplicate_strings();
 
-        // "World" should absorb "HelloWorld"
-        assert!(!processor.strings.contains_key("HelloWorld"));
-        assert!(processor.strings.contains_key("World"));
+           // "World" should absorb "HelloWorld"
+           assert!(!processor.strings.contains_key("HelloWorld"));
+           assert!(processor.strings.contains_key("World"));
 
-        let world_info = processor.strings.get("World").unwrap();
-        assert_eq!(world_info.count, 5); // 2 + 3
-        assert_eq!(world_info.files.len(), 3); // All 3 files
-    }
- */
+           let world_info = processor.strings.get("World").unwrap();
+           assert_eq!(world_info.count, 5); // 2 + 3
+           assert_eq!(world_info.files.len(), 3); // All 3 files
+       }
+    */
     #[test]
     fn test_deduplicate_strings_utf16_merge() {
         let mut processor = FileProcessor::new(None).unwrap();
@@ -771,7 +771,7 @@ mod tests {
     }
 
     use pyo3::{Py, PyResult, Python};
-    use stringzz::{process_buffers_parallel, process_buffers_with_stats};
+    use stringzz::{analyze_buffers_comprehensive, process_buffers_with_stats};
 
     #[test]
     fn test_process_buffers_parallel() {
@@ -820,14 +820,24 @@ mod tests {
             ];
             let py_fp_ref = py_fp.borrow_mut(py);
             let py_scoring_ref = py_scoring.borrow_mut(py);
-            let (file_infos, strings, opcodes, _utf16strings) =
-                process_buffers_parallel(buffers, py_fp_ref, py_scoring_ref).unwrap();
+            let (
+                string_combis,
+                string_superrules,
+                utf16_combis,
+                utf16_superrules,
+                opcode_combis,
+                opcode_superrules,
+                file_strings,
+                file_opcodes,
+                file_utf16strings,
+                file_infos,
+            ) = analyze_buffers_comprehensive(buffers, py_fp_ref, py_scoring_ref).unwrap();
 
             // Should have processed 4 buffers
             assert_eq!(file_infos.len(), 4);
 
             // Should have extracted strings
-            assert!(strings.values().any(|v| !v.is_empty()));
+            assert!(file_strings.values().any(|v| !v.is_empty()));
 
             // Check that each buffer has its own entry
             assert!(file_infos.contains_key("buffer_0"));
@@ -878,33 +888,5 @@ mod tests {
             Ok(())
         });
         // Create test buffers with duplicate content (same SHA256)
-    }
-
-    #[test]
-    fn test_process_buffers_empty() {
-        pyo3::prepare_freethreaded_python();
-        let config = Config::default();
-        let _ = Python::with_gil(|py| -> PyResult<_> {
-            let py_fp: Py<FileProcessor> = Py::new(
-                py,
-                FileProcessor {
-                    config,
-                    ..Default::default()
-                },
-            )?;
-            let py_scoring: Py<ScoringEngine> = Py::new(py, ScoringEngine::default())?;
-
-            let py_fp_ref = py_fp.borrow_mut(py);
-            let py_scoring_ref = py_scoring.borrow_mut(py);
-            let empty_buffers: Vec<Vec<u8>> = vec![];
-            let (file_infos, strings, opcodes, utf16strings) =
-                process_buffers_parallel(empty_buffers, py_fp_ref, py_scoring_ref).unwrap();
-            // Should return empty results
-            assert!(file_infos.is_empty());
-            assert!(strings.is_empty());
-            assert!(opcodes.is_empty());
-            assert!(utf16strings.is_empty());
-            Ok(())
-        });
     }
 }
